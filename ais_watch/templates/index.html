@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AIS Watch · Norwegian Orca Survey</title>
+<link rel="icon" href="/static/norwegian-orca-survey.png" type="image/png">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer>
+</script>
+</head>
+<body>
+<header>
+<a class="brand" href="/" aria-label="Norwegian Orca Survey AIS Watch">
+<img src="/static/norwegian-orca-survey.png" alt="Norwegian Orca Survey">
+<span>
+<strong>AIS Watch</strong>
+<small>Norwegian Orca Survey</small>
+</span>
+</a>
+<nav aria-label="Main navigation">
+<button data-view="map" class="active">Map</button>
+<button data-view="boats">Boats</button>
+<button data-view="incidents">Incidents</button>
+<button data-view="export">Export</button>
+<button data-view="settings">Settings</button>
+</nav>
+<div class="recording-controls">
+<div id="status" class="status" role="status">Loading archive…</div>
+<div class="recording-buttons">
+<button id="toggle-collection" aria-describedby="status">Start recording</button>
+<button id="collect">Collect now</button>
+</div>
+</div>
+</header>
+<dialog id="recording-start" aria-labelledby="recording-start-title">
+<form method="dialog">
+<h2 id="recording-start-title">Include the last 14 days?</h2>
+<p>Also collect available history for the active recording area?</p>
+<p><small>Keeping the current start uses the configured start date or resumes existing progress. Historical collection may take a while.</small></p>
+<div class="controls">
+<button value="cancel">Cancel</button>
+<button value="current">Keep current start</button>
+<button value="history">Include last 14 days</button>
+</div>
+</form>
+</dialog>
+<div id="notice" role="status" hidden>
+</div>
+<main>
+<section id="view-map" class="view map-view">
+<details id="controls" open>
+<summary>Recording area</summary>
+<div class="controls">
+<label>Saved area <select id="areas">
+</select>
+</label>
+<button id="show-area">Show</button>
+<button id="activate-area">Activate watch</button>
+<button id="delete-area">Delete area</button>
+<button id="draw-area">Draw rectangle</button>
+<button id="viewport-area">Use map view</button>
+<label class="file-button">Import GeoJSON<input id="import-area" type="file" accept=".json,.geojson,application/json">
+</label>
+<label>Area name <input id="area-name" placeholder="Skjervøy tight">
+</label>
+<button id="save-area" disabled>Save area</button>
+<span id="area-hint" class="muted">
+</span>
+</div>
+
+</details>
+<iframe id="replay" title="Archived vessel tracks and day replay">
+</iframe>
+</section>
+<section id="view-export" class="view content" hidden>
+<h1>Export tracking data</h1>
+<p>Download saved reports for selected dates and boats. SQLite matches the standalone scripts’ download format.</p>
+<div class="controls export-controls">
+<label>Export from <input id="export-start" type="date">
+</label>
+<label>through <input id="export-end" type="date">
+</label>
+<label>Boats <select id="export-boats" multiple aria-label="Select boats for export; none selected means all">
+</select>
+</label>
+<label>Format <select id="export-format">
+<option value="sqlite">SQLite script download</option>
+<option value="csv">CSV positions</option>
+<option value="geojson">GeoJSON tracks</option>
+<option value="html">HTML replay</option>
+</select>
+</label>
+<div class="export-actions">
+<span class="export-action-title">Download</span>
+<div class="export-buttons">
+<button id="export">Export data</button>
+<button id="export-scripts">Download script bundle</button>
+</div>
+</div>
+</div>
+<p class="export-help">Dates use Norway time. No boat selection means all boats.</p>
+<p>The script bundle includes the SQLite download, config and area for offline replay or incident analysis. It contains recorded data only, including any recording gaps.</p>
+</section>
+<section id="view-boats" class="view content" hidden>
+<div class="section-heading">
+<h1>Boats &amp; categories</h1>
+<input id="boat-search" type="search" placeholder="Find name or MMSI" aria-label="Find boat">
+</div>
+<div class="controls board-toolbar">
+<small>Drag boats between categories, or use Move on a card.</small>
+<details><summary>Add boat</summary>
+<div class="controls">
+<input id="new-mmsi" placeholder="Nine-digit MMSI" aria-label="New boat MMSI">
+<input id="new-name" placeholder="Boat name (optional)" aria-label="New boat name">
+<button id="add-boat">Add boat</button>
+</div></details>
+<form id="category-add" class="controls">
+<input name="name" placeholder="New category" required aria-label="New category name">
+<input name="color" type="color" value="#0d9488" aria-label="New category base colour">
+<button>Add category</button>
+</form>
+</div>
+<div id="boat-board" class="boat-board" aria-label="Boats grouped by category"></div>
+</section>
+<section id="view-incidents" class="view content" hidden>
+<div class="section-heading">
+<div>
+<h1>Incident review</h1>
+<p>Possible joining incidents flagged by the configured rules. AIS gaps interrupt detection.</p>
+</div>
+<div class="controls">
+<input id="incident-day" type="date" aria-label="Incident day">
+<button id="load-incidents">Load</button>
+<button id="analyse-day">Analyse day</button>
+<button id="analyse-all">Reanalyse archive</button>
+<button id="incident-csv">Export CSV</button>
+</div>
+</div>
+<div id="analysis-status">
+</div>
+<div id="incident-list">
+</div>
+</section>
+<section id="view-settings" class="view content" hidden>
+<h1>Settings</h1>
+<form id="settings-form">
+<fieldset>
+<legend>Collection</legend>
+<label>Collection interval (minutes)<input name="interval_minutes" type="number" min="1" max="10080" step="any" required>
+</label>
+<label>Initial recording date<input name="start_date" type="date" required>
+</label>
+<small>Used when activating the first watch. Later area switches begin at the switch time.</small>
+<label>Track gap limit (minutes)<input name="gap_minutes" type="number" min="1" max="1440" step="any" required>
+</label>
+<label>Map sampling interval (seconds; 0 = full resolution)<input name="display_interval_seconds" type="number" min="0" max="3600" step="any" required>
+</label>
+<small>Sampling affects the website only. Stored data, exports and incident analysis retain original reports.</small>
+</fieldset>
+<fieldset>
+<legend>BarentsWatch</legend>
+<label>Client ID<input name="client_id" autocomplete="off">
+</label>
+<label>Client secret<input name="client_secret" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved secret">
+</label>
+<small id="credential-status">
+</small>
+</fieldset>
+<fieldset>
+<legend>Incident rules</legend>
+<label class="check">
+<input name="auto_incidents" type="checkbox"> Analyse automatically after collection</label>
+<label>Radius (metres)<input name="radius_m" type="number" min="1" max="100000" step="any" required>
+</label>
+<label>Maximum small-boat speed (knots)<input name="max_small_speed_knots" type="number" min="0.01" max="100" step="any" required>
+</label>
+<label>Prior activity (minutes)<input name="prior_minutes" type="number" min="1" max="1440" step="any" required>
+</label>
+<label>Minimum time together (minutes)<input name="together_minutes" type="number" min="1" max="1440" step="any" required>
+</label>
+<label>Maximum AIS gap (minutes)<input name="max_gap_minutes" type="number" min="1" max="1440" step="any" required>
+</label>
+<small>Small and big vessel roles are assigned in Boats, independently of categories. Save changes, then reanalyse to update previous results.</small>
+</fieldset>
+<button type="submit">Save settings</button>
+</form>
+<details>
+<summary>Archive and collection history</summary>
+<p>
+<a class="button" href="/api/backup">Download database backup</a> Credentials are stored separately and are excluded.</p>
+<div id="archive-info">
+</div>
+<h2>Recent jobs</h2>
+<div id="job-history">
+</div>
+<h2>Recovery gaps</h2>
+<div id="gap-history">
+</div>
+</details>
+</section>
+</main>
+</body>
+</html>

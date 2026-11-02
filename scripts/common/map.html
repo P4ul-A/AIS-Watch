@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% if review %}Possible joining incidents{% else %}Historical ship tracks — Norway{% endif %}</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+        header { padding: 12px 20px; background: #f6f8fa; flex-shrink: 0; }
+        h1 { font-size: 20px; margin: 0 0 4px; }
+        p { margin: 4px 0; }
+        body { height: 100vh; display: flex; flex-direction: column; }
+        #map { flex: 1; min-height: 300px; min-width: 0; }
+        .leaflet-control-layers-overlays { max-height: 50vh; overflow-y: auto; }
+        #selection:not([hidden]) { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        #track-color { width: 44px; height: 32px; cursor: pointer; }
+        .vessel-name { font: inherit; color: inherit; background: none; border: 0; padding: 2px 0; cursor: pointer; }
+        .vessel-name:hover { text-decoration: underline; }
+        #replay { padding: 10px 20px; background: #f6f8fa; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+        #replay button, #replay select { min-height: 36px; font: inherit; }
+        #timeline { width: 100%; margin: 0; cursor: pointer; }
+        #replay-time { font-variant-numeric: tabular-nums; }
+        .timeline-labels { width: 100%; display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+        #workspace { display: flex; flex: 1; min-height: 300px; }
+        #incident-panel { width: 390px; flex-shrink: 0; overflow-y: auto; max-height: 58vh; padding: 12px; box-sizing: border-box; }
+        #incident-panel h2 { font-size: 16px; margin: 0 0 8px; }
+        #incident-list { list-style: none; padding: 0; margin: 8px 0; }
+        .incident-button { display: block; width: 100%; text-align: left; font: inherit; background: white; border: 1px solid #cbd5e1; border-radius: 4px; padding: 10px; margin: 6px 0; cursor: pointer; }
+        .incident-button[aria-pressed="true"] { background: #e0f2fe; border-color: #0072b2; }
+        .incident-button span { display: block; }
+        .incident-button small { display: block; color: #475569; }
+        .incident-explanation { padding: 0 10px 8px; }
+        .incident-explanation summary { cursor: pointer; }
+        .incident-explanation p { margin: 6px 0; }
+        #review-detail { padding: 6px 0; }
+        @media (max-width: 600px) {
+            header, #replay { padding: 8px 10px; }
+            .leaflet-control-layers { max-width: 65vw; }
+        }
+        @media (max-width: 850px) {
+            body { height: auto; min-height: 100vh; }
+            #workspace { flex: none; flex-direction: column; }
+            #incident-panel { width: 100%; max-height: 32vh; }
+            #workspace #map { flex: none; height: 45vh; min-height: 300px; }
+        }
+        .video-options {position: relative;}
+        .video-options summary {cursor: pointer;}
+        .video-options[open] {flex-basis: 100%;}
+        {% if web_mode %}
+        header {padding: 7px 12px; background: #fafaf8;}
+        header h1 {font-size: 16px; margin: 0;}
+        header p:not(#map-period), header > img {display: none;}
+        header #map-period {font-size: 12px; margin: 2px 0;}
+        #replay {padding: 8px 12px; gap: 7px; background: #fafaf8;}
+        #replay button, #replay select {font: inherit; border: 1px solid #deded9; border-radius: 5px; background: white; padding: 5px 8px;}
+        input {accent-color: #171717;}
+        #replay-calendar {position: relative;}
+        #replay-calendar > summary {cursor: pointer; border: 1px solid #deded9; border-radius: 5px; padding: 5px 8px;}
+        .calendar-panel {position: absolute; bottom: calc(100% + 8px); left: 0; width: 270px; padding: 10px; background: white; border: 1px solid #deded9; border-radius: 7px; box-shadow: 0 3px 16px #0002; z-index: 1100;}
+        .calendar-heading {display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;}
+        .calendar-weekdays, #calendar-days {display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; text-align: center;}
+        .calendar-weekdays {font-size: 11px; color: #62625e;}
+        #replay #calendar-days button {position: relative; min-height: 32px; padding: 2px 0 6px; font-size: 12px; cursor: pointer;}
+        #replay #calendar-days .has-data {background: #e4eee9; font-weight: 600;}
+        #calendar-days .has-data::after {content: ''; position: absolute; bottom: 3px; left: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%; background: #216447;}
+        #replay #calendar-days [aria-pressed="true"] {outline: 2px solid #171717; outline-offset: -2px;}
+        #calendar-status {display: block; margin-top: 6px; color: #62625e; font-size: 11px;}
+
+        #export-area, #area-status {display: none;}
+        #workspace {flex: 1; min-height: 120px;}
+        #workspace #map {flex: 1; height: auto; min-height: 120px;}
+        {% endif %}
+    </style>
+</head>
+<body>
+    <header>
+        {% if brand_logo %}<img src="{{ brand_logo }}" alt="Norwegian Orca Survey" style="float:right;width:58px;height:48px;object-fit:contain">{% endif %}
+        <h1>{% if review %}Possible joining incidents{% else %}Historical ship tracks — Norway{% endif %}</h1>
+        <p id="map-period">{{ start }} (included) → {{ end }} (excluded) · {{ time_zone | default("UTC") }}</p>
+        <p>Source: <a href="https://www.kystverket.no/">Kystverket</a>
+            {% if source == 'api' %}via BarentsWatch{% endif %}.
+            {% if not review %}
+            Toggle vessels in the map control. Click a track to highlight its vessel and adjust its colour.
+            Click markers for timestamps.
+            {% endif %}
+            Paths stop at gaps longer than {{ '%g' | format(gap_minutes) }} minutes.</p>
+        {% if area and not review %}<p>{% if source == 'archive' %}
+            Saved visitor tracks, including entry-day backfill and the 24-hour follow period. The outline shows the selected area revision.
+            {% else %}Ships with recorded positions inside the outlined search area.
+            Their available tracks for the full interval are shown, including positions outside the area.{% endif %}</p>{% endif %}
+        {% if missing %}<p>No positions: {{ missing | join(', ') }}</p>{% endif %}
+        <p id="load-status" role="status">Loading vessel tracks…</p>
+        {% if display_interval_seconds %}<p>Sampled overview: approximately one position per {{ '%g' | format(display_interval_seconds) }} seconds, plus segment endpoints. All boats are retained. Full-resolution reports remain in the source data.</p>{% endif %}
+        {% if review %}
+        <p>Candidates for manual review. AIS movement does not confirm whales or a boat's intent.</p>
+        <details><summary>Detection settings and configured boats</summary>
+            <p>Small boats: {{ review.small_boats | join(', ') }}. Big boats: {{ review.big_boats | join(', ') }}.</p>
+            <p>Radius {{ '%g' | format(review.settings.radius_m) }} m · Small boat ≤ {{ '%g' | format(review.settings.max_small_speed_knots) }} knots · Prior activity {{ '%g' | format(review.settings.prior_minutes) }} min · Together {{ '%g' | format(review.settings.together_minutes) }} min · Maximum AIS gap {{ '%g' | format(review.settings.max_gap_minutes) }} min.</p>
+            <p>One-minute analysis using interpolation within short AIS intervals. Tracks and boat markers show original reports; the dashed circle follows the small boat's analysis position. Durations and arrival times are approximate.</p>
+            {% if review.missing %}<p>No in-area positions for configured boats: {{ review.missing | join(', ') }}</p>{% endif %}
+        </details>
+        {% endif %}
+        <div id="selection" hidden aria-live="polite">
+            <strong id="selected-name"></strong>
+            <label for="track-color">Track colour</label>
+            <input id="track-color" type="color">
+            <button id="clear-selection" type="button">Clear selection</button>
+        </div>
+    </header>
+    <div id="workspace">
+        {% if review %}<aside id="incident-panel" aria-label="Incidents for manual review">
+            <h2>{{ review.incidents | length }} possible joining incidents</h2>
+            <button id="download-incidents" type="button">Download CSV</button>
+            {% if not review.incidents %}<p>No incidents matched the configured rules in the available data.</p>{% endif %}
+            <p id="review-detail" role="status">Select an incident to review both boats, starting up to 20 minutes before joining.</p>
+            <ul id="incident-list"></ul>
+        </aside>{% endif %}
+        <div id="map" aria-label="Map of selected ship tracks"></div>
+    </div>
+    <div id="replay" aria-label="Track replay controls">
+        {% if web_mode %}<details id="replay-calendar">
+            <summary id="replay-day" aria-label="Choose replay day"></summary>
+            <div class="calendar-panel">
+                <div class="calendar-heading">
+                    <button id="calendar-previous" type="button" aria-label="Previous month">‹</button>
+                    <strong id="calendar-month"></strong>
+                    <button id="calendar-next" type="button" aria-label="Next month">›</button>
+                </div>
+                <div class="calendar-weekdays" aria-hidden="true"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+                <div id="calendar-days" aria-label="Choose a date"></div>
+                <small id="calendar-status" role="status">● Days with recorded positions</small>
+            </div>
+        </details>{% endif %}
+        <button id="play-pause" type="button">Play</button>
+        <label for="replay-speed">Speed</label>
+        <select id="replay-speed">
+            <option value="1">1× (real time)</option>
+            <option value="60">1 minute / second</option>
+            <option value="600">10 minutes / second</option>
+            <option value="3600" selected>1 hour / second</option>
+            <option value="21600">6 hours / second</option>
+            <option value="86400">1 day / second</option>
+        </select>
+        <button id="show-all" type="button">Show full tracks</button>
+        <button id="export-area" type="button">Use current map area</button>
+        <span id="area-status" role="status"></span>
+        <details class="video-options"><summary>Export video</summary>
+        <button id="export-recording" type="button">Export recording · Full HD</button>
+        <label><input id="export-names" type="checkbox" checked> Names</label>
+        <label><input id="export-tracks" type="checkbox" checked> Tracks</label>
+        <span id="export-status" role="status">1920 × 1080 · Ticked ships · Full interval · Uses selected speed and current zoom</span>
+        </details>
+        <output id="replay-time" for="timeline">Full tracks</output>
+        <input id="timeline" type="range" min="{{ start_ms }}" max="{{ end_ms }}"
+               value="{{ end_ms }}" step="any" aria-label="Replay time">
+        <div class="timeline-labels"><span id="range-start">{{ start }} UTC</span><span id="range-end">{{ end }} UTC (excluded)</span></div>
+    </div>
+    <script type="module">
+        // Compressed embedded data keeps this a single file without a local server.
+        const loadStatus = document.getElementById('load-status');
+        let tracks;
+        try {
+            const bytes = Uint8Array.from(atob({{ packed_tracks | tojson }}), char => char.charCodeAt(0));
+            const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+            tracks = JSON.parse(await new Response(stream).text());
+        } catch (error) {
+            loadStatus.textContent = 'Could not unpack tracks. Open this file in a browser with gzip DecompressionStream support.';
+            throw error;
+        }
+        loadStatus.textContent = 'Drawing vessel tracks…';
+        const fadeTrails = {{ fade_trails | default(true) | tojson }};
+        const review = {{ review | default(none) | tojson }};
+        const colors = {{ colors | tojson }};
+        const tileUrls = {
+            worldwide: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+            norway: 'https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png'
+        };
+        const map = L.map('map', {preferCanvas: true});
+        // Separate panes keep every ship dot above tracks, including highlighted ones.
+        map.createPane('shipDots').style.zIndex = 450;
+        const searchArea = {{ area | default(none) | tojson }};
+        // Set the view before adding vessels. Otherwise their queued layer-add
+        // events rebuild the entire legend once per vessel when the map loads.
+        if (searchArea) map.fitBounds(L.geoJSON(searchArea).getBounds(), {padding: [24, 24], maxZoom: 13});
+        else map.setView([0, 0], 2);
+        document.getElementById('export-area').addEventListener('click', () => {
+            // GeoJSON coordinates are longitude, latitude; export only the rectangle.
+            const bounds = map.getBounds();
+            const west = bounds.getWest(), east = bounds.getEast();
+            const south = bounds.getSouth(), north = bounds.getNorth();
+            const status = document.getElementById('area-status');
+            if (west < -180 || east > 180 || south < -90 || north > 90) {
+                status.textContent = 'Zoom in to an area within −180° to 180° longitude.';
+                return;
+            }
+            const area = {
+                type: 'Feature',
+                properties: {},
+                geometry: {type: 'Polygon', coordinates: [[
+                    [west, south], [east, south], [east, north], [west, north], [west, south]
+                ]]}
+            };
+            const url = URL.createObjectURL(new Blob([JSON.stringify(area, null, 2)], {
+                type: 'application/geo+json'
+            }));
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'area.geojson';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            status.textContent = 'Saved area.geojson. Use it with area/plot_area.py.';
+        });
+        // Worldwide coverage includes offshore tracks beyond Kartverket's Norway tiles.
+        const worldwide = L.tileLayer(tileUrls.worldwide, {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri · Sources: Esri, HERE, Garmin, GEBCO, USGS, OpenStreetMap contributors and the GIS User Community · AIS: <a href="https://www.kystverket.no/">Kystverket</a>'
+        }).addTo(map);
+        const norway = L.tileLayer(tileUrls.norway, {
+            maxZoom: 19,
+            maxNativeZoom: 18,
+            attribution: '&copy; <a href="https://www.kartverket.no/">Kartverket</a> · AIS: <a href="https://www.kystverket.no/">Kystverket</a>'
+        });
+        const overlays = {};
+        const bounds = L.latLngBounds([]);
+        const palette = ['#0072b2', '#d55e00', '#009e73', '#cc79a7', '#8c6100', '#5a3db8'];
+        const vessels = [];
+        let selectedVessel = null;
+        let selectedIncident = null;
+        const incidentCircle = L.circle([0, 0], {
+            radius: review ? review.settings.radius_m : 500,
+            color: '#0072b2', weight: 2, dashArray: '6 6', fillOpacity: 0.06, interactive: false
+        });
+        let showingFullTracks = true;
+        const selection = document.getElementById('selection');
+        const selectedName = document.getElementById('selected-name');
+        const colorPicker = document.getElementById('track-color');
+
+        function trackOpacity(reportTime, time) {
+            // Fade with six hours of recorded-time half-life, retaining a visible trail.
+            const age = Math.max(0, time - reportTime);
+            return 0.2 + 0.65 * Math.pow(0.5, age / (6 * 60 * 60 * 1000));
+        }
+
+        function splitTrail(segment) {
+            // Overlap short sections so fading never introduces gaps in the track.
+            const sections = [];
+            let start = 0;
+            for (let end = 1; end < segment.length; end++) {
+                if (Date.parse(segment[end][2]) - Date.parse(segment[start][2]) >= 15 * 60000) {
+                    sections.push(segment.slice(start, end + 1));
+                    start = end;
+                }
+            }
+            if (start < segment.length - 1 || segment.length === 1) sections.push(segment.slice(start));
+            return sections;
+        }
+
+        function updateStyles() {
+            // Style every segment and marker together, including hidden vessels.
+            vessels.forEach(vessel => {
+                const selected = vessel === selectedVessel || (selectedIncident &&
+                    [selectedIncident.small_mmsi, selectedIncident.big_mmsi].includes(vessel.mmsi));
+                vessel.layer.eachLayer(path => {
+                    const isMarker = path instanceof L.CircleMarker;
+                    const opacity = (showingFullTracks || !fadeTrails || path.options.reportTime === undefined
+                        ? 0.85 : trackOpacity(path.options.reportTime, currentTime)) *
+                        ((selectedVessel || selectedIncident) && !selected ? 0.3 / 0.85 : 1) *
+                        (vessel.uncategorised && !selected ? 0.15 : 1);
+                    path.setStyle({
+                        color: vessel.color, fillColor: vessel.color, opacity,
+                        fillOpacity: opacity,
+                        weight: isMarker ? (selected ? 3 : 2) : (selected ? 6 : 3)
+                    });
+                });
+                const swatch = map.getContainer().querySelector(`[data-mmsi="${vessel.mmsi}"]`);
+                if (swatch) swatch.style.color = vessel.color;
+            });
+            if (selectedVessel) selectedVessel.layer.bringToFront();
+            if (selectedIncident) vessels.filter(vessel =>
+                [selectedIncident.small_mmsi, selectedIncident.big_mmsi].includes(vessel.mmsi)
+            ).forEach(vessel => vessel.layer.bringToFront());
+        }
+
+        function selectVessel(vessel) {
+            selectedIncident = null;
+            if (map.hasLayer(incidentCircle)) map.removeLayer(incidentCircle);
+            document.querySelectorAll('.incident-button').forEach(button => button.setAttribute('aria-pressed', 'false'));
+            selectedVessel = vessel;
+            selection.hidden = !vessel;
+            if (vessel) {
+                selectedName.textContent = `${vessel.name} · MMSI ${vessel.mmsi}`;
+                colorPicker.value = vessel.color;
+            }
+            updateStyles();
+            // The selection row changes the map's available height.
+            map.invalidateSize({pan: false});
+        }
+
+        colorPicker.addEventListener('input', () => {
+            if (!selectedVessel) return;
+            selectedVessel.color = colorPicker.value;
+            updateStyles();
+        });
+        document.getElementById('clear-selection').addEventListener('click', () => selectVessel(null));
+        map.on('click', () => selectVessel(null));
+        map.on('overlayremove', event => {
+            if (selectedVessel && event.layer === selectedVessel.layer) selectVessel(null);
+        });
+
+        function escapeHtml(text) {
+            const element = document.createElement('span');
+            element.textContent = text;
+            return element.innerHTML;
+        }
+
+        const displayZone = {{ time_zone | default('UTC') | tojson }};
+        function formatTime(timestamp) {
+            return new Intl.DateTimeFormat('sv-SE', {timeZone: displayZone,
+                year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+                timeZoneName: 'short'}).format(new Date(timestamp));
+        }
+
+        function marker(point, label, color, layer, radius) {
+            return L.circleMarker([point[0], point[1]], {
+                pane: 'shipDots', radius, color, fillColor: color, fillOpacity: 0.9, weight: 2,
+                bubblingMouseEvents: false
+            }).bindPopup(`${label}<br>${formatTime(point[2])}`).addTo(layer);
+        }
+
+        tracks.forEach((track, index) => {
+            const name = escapeHtml(track.name || `MMSI ${track.mmsi}`);
+            // Canvas normalizes generated CSS colours to hex for the colour picker.
+            const context = document.createElement('canvas').getContext('2d');
+            context.fillStyle = colors[track.mmsi] || (index < palette.length ? palette[index] :
+                `hsl(${(index * 137.508) % 360}, 65%, 38%)`);
+            const color = context.fillStyle;
+            const layer = L.featureGroup().addTo(map);
+            const vessel = {layer, color, uncategorised: track.category_id === 1, segments: [], mmsi: track.mmsi, name: track.name || `MMSI ${track.mmsi}`};
+            vessels.push(vessel);
+            layer.on('click', () => selectVessel(vessel));
+            const displaySegments = fadeTrails ? track.segments.flatMap(splitTrail) : track.segments;
+            displaySegments.forEach(segment => {
+                const coordinates = segment.map(point => [point[0], point[1]]);
+                coordinates.forEach(point => bounds.extend(point));
+                let path;
+                if (segment.length > 1) {
+                    path = L.polyline(coordinates, {color, weight: 3, opacity: 0.85, bubblingMouseEvents: false})
+                        .bindTooltip(`${name} · ${formatTime(segment[0][2])} → ${formatTime(segment.at(-1)[2])}`)
+                        .addTo(layer);
+                } else {
+                    path = marker(segment[0], `${name} · isolated position`, color, layer, 4);
+                }
+                path.options.reportTime = Date.parse(segment.at(-1)[2]);
+                vessel.segments.push({
+                    points: segment, coordinates, times: segment.map(point => Date.parse(point[2])),
+                    path, count: segment.length
+                });
+            });
+            vessel.start = marker(track.segments[0][0], `${name} · start`, color, layer, 7);
+            vessel.end = marker(track.segments.at(-1).at(-1), `${name} · end`, color, layer, 4);
+            vessel.start.options.reportTime = Date.parse(track.segments[0][0][2]);
+            vessel.end.options.reportTime = Date.parse(track.segments.at(-1).at(-1)[2]);
+            vessel.cursor = L.circleMarker(track.segments[0][0].slice(0, 2), {
+                pane: 'shipDots',
+                radius: 6, color, fillColor: color, fillOpacity: 0.9,
+                weight: 2, bubblingMouseEvents: false
+            }).bindTooltip(name).bindPopup('');
+            // Include MMSI in the key so ships sharing a name retain separate toggles.
+            overlays[`<span data-mmsi="${track.mmsi}" style="color:${color}">●</span> <button type="button" class="vessel-name" data-vessel-mmsi="${track.mmsi}" title="Highlight vessel track">${name}</button> (${track.count.toLocaleString()} positions)<!-- ${track.mmsi} -->`] = layer;
+        });
+        const layerControl = L.control.layers({
+            'Worldwide (Esri)': worldwide,
+            'Norway (Kartverket)': norway
+        }, overlays, {collapsed: tracks.length > 50}).addTo(map);
+        // Delegate clicks because Leaflet rebuilds legend rows when layers change.
+        layerControl.getContainer().addEventListener('click', event => {
+            const button = event.target.closest('.vessel-name');
+            if (!button) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const vessel = vessels.find(item => String(item.mmsi) === button.dataset.vesselMmsi);
+            if (!map.hasLayer(vessel.layer)) vessel.layer.addTo(map);
+            selectVessel(vessel);
+        });
+        L.control.scale().addTo(map);
+        let areaOutline = null;
+        if (searchArea) {
+            areaOutline = L.geoJSON(searchArea, {
+                style: {color: '#333333', weight: 2, dashArray: '6 6', fill: false},
+                interactive: false
+            });
+            if (!{{ web_mode | tojson }}) areaOutline.addTo(map);
+            map.fitBounds(areaOutline.getBounds(), {padding: [24, 24], maxZoom: 13});
+        } else if (bounds.isValid()) {
+            map.fitBounds(bounds, {padding: [24, 24], maxZoom: 13});
+        } else {
+            map.setView([70.03, 20.97], 9);
+        }
+
+        const timeline = document.getElementById('timeline');
+        const playButton = document.getElementById('play-pause');
+        const speed = document.getElementById('replay-speed');
+        const replayTime = document.getElementById('replay-time');
+        const replayStart = Number(timeline.min);
+        const replayEnd = Number(timeline.max);
+        const gapMilliseconds = {{ gap_minutes | tojson }} * 60000;
+        let currentTime = replayEnd;
+        let playback = null;
+        let lastTick = 0;
+
+        function setVisible(vessel, path, visible) {
+            if (visible && !vessel.layer.hasLayer(path)) vessel.layer.addLayer(path);
+            if (!visible && vessel.layer.hasLayer(path)) vessel.layer.removeLayer(path);
+        }
+
+        function reportCount(times, time) {
+            // Binary search keeps scrubbing efficient without rescanning every AIS fix.
+            let low = 0;
+            let high = times.length;
+            while (low < high) {
+                const middle = Math.floor((low + high) / 2);
+                if (times[middle] <= time) low = middle + 1;
+                else high = middle;
+            }
+            return low;
+        }
+
+        function renderReplay(fullTracks = false) {
+            showingFullTracks = fullTracks;
+            timeline.value = currentTime;
+            const timeLabel = formatTime(new Date(currentTime).toISOString());
+            replayTime.textContent = fullTracks ? 'Full tracks' : timeLabel;
+            timeline.setAttribute('aria-valuetext', timeLabel);
+            vessels.forEach(vessel => {
+                let latest = null;
+                vessel.segments.forEach(segment => {
+                    const count = fullTracks ? segment.points.length : reportCount(segment.times, currentTime);
+                    if (count > 0) latest = segment.points[count - 1];
+                    if (count > 0) segment.path.options.reportTime = segment.times[count - 1];
+                    if (count !== segment.count) {
+                        if (segment.points.length > 1) {
+                            segment.path.setLatLngs(segment.coordinates.slice(0, count));
+                            if (count > 0) segment.path.setTooltipContent(
+                                `${escapeHtml(vessel.name)} · ${formatTime(segment.points[0][2])} → ${formatTime(segment.points[count - 1][2])}`
+                            );
+                        }
+                        segment.count = count;
+                    }
+                    setVisible(vessel, segment.path, count >= Math.min(2, segment.points.length));
+                });
+                const first = vessel.segments[0];
+                const last = vessel.segments.at(-1);
+                setVisible(vessel, vessel.start, fullTracks || first.times[0] <= currentTime);
+                setVisible(vessel, vessel.end, fullTracks || last.times.at(-1) <= currentTime);
+                // Use recorded positions only: never interpolate across missing reports.
+                if (latest && !fullTracks) {
+                    vessel.cursor.setLatLng(latest.slice(0, 2));
+                    const stale = currentTime - Date.parse(latest[2]) > gapMilliseconds;
+                    vessel.cursor.setPopupContent(
+                        `${escapeHtml(vessel.name)} · last reported position<br>${formatTime(latest[2])}` +
+                        (stale ? '<br>No recent AIS report' : '')
+                    );
+                }
+                setVisible(vessel, vessel.cursor, Boolean(latest) && !fullTracks);
+            });
+            updateStyles();
+            if (review) renderIncidentCircle(fullTracks);
+        }
+
+        function pauseReplay() {
+            clearInterval(playback);
+            playback = null;
+            playButton.textContent = 'Play';
+        }
+
+        playButton.addEventListener('click', () => {
+            if (playback !== null) {
+                pauseReplay();
+                return;
+            }
+            if (currentTime >= replayEnd) currentTime = replayStart;
+            renderReplay();
+            lastTick = performance.now();
+            playButton.textContent = 'Pause';
+            playback = setInterval(() => {
+                const now = performance.now();
+                currentTime = Math.min(replayEnd, currentTime + (now - lastTick) * Number(speed.value));
+                lastTick = now;
+                renderReplay();
+                if (currentTime >= replayEnd) pauseReplay();
+            }, 100);
+        });
+        timeline.addEventListener('input', () => {
+            pauseReplay();
+            currentTime = Number(timeline.value);
+            renderReplay();
+        });
+        document.getElementById('show-all').addEventListener('click', () => {
+            pauseReplay();
+            currentTime = replayEnd;
+            renderReplay(true);
+        });
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) pauseReplay();
+        });
+        timeline.setAttribute('aria-valuetext', 'Full tracks');
+        document.getElementById('range-start').textContent = formatTime(new Date(replayStart).toISOString());
+        document.getElementById('range-end').textContent = formatTime(new Date(replayEnd + 1).toISOString()) + ' (excluded)';
+        document.getElementById('map-period').textContent = formatTime(new Date(replayStart).toISOString()) + ' → ' + formatTime(new Date(replayEnd + 1).toISOString()) + ' (excluded)';
+        // Apply category fading on initial load, before any selection or replay event.
+        updateStyles();
+        loadStatus.hidden = true;
+        {% if review %}{% include 'incidents.js' %}{% endif %}
+        {% include 'vendor/mediabunny.cjs' %}
+        {% include 'recording.js' %}
+        {% if web_mode %}{% include 'web_bridge.js' %}{% endif %}
+    </script>
+</body>
+</html>

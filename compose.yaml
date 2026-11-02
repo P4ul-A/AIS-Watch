@@ -1,0 +1,22 @@
+services:
+  ais-watch:
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "9101:9101"
+    environment:
+      AIS_DATA_DIR: /data
+      AIS_CREDENTIALS_FILE: /run/secrets/barentswatch.ini
+    volumes:
+      - ais-data:/data
+      - type: bind
+        source: ./scripts/common/credentials.ini
+        target: /run/secrets/barentswatch.ini
+        read_only: true
+        bind:
+          create_host_path: false
+    stop_grace_period: 40s
+
+volumes:
+  ais-data:

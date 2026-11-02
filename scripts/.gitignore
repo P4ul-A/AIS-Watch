@@ -1,0 +1,6 @@
+output/
+config.txt
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
