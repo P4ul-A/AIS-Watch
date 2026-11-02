@@ -8,7 +8,7 @@ Record and review a Norwegian AIS season from your private LAN/VPN.
 docker compose up -d --build
 ```
 
-Open **http://localhost:9101**. Set credentials, collection interval and initial
+Open **http://localhost:8080**. Set credentials, collection interval and initial
 date in **Settings**. Draw/import a rectangle on **Map**, save and activate it,
 then click **Start recording**. Choose whether to include the last 14 days
 of available history for the active area or keep its current start/progress.

@@ -26,7 +26,7 @@ def main():
         app = create_app(store)
         worker = Worker(store)
         app.extensions["worker"] = worker
-        server = create_server(app, host="0.0.0.0", port=int(os.environ.get("PORT", "9101")), threads=4)
+        server = create_server(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")), threads=4)
 
         def shutdown(signum, frame):
             worker.stop.set()

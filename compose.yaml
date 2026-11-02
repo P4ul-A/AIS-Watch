@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - "9101:9101"
+      - "8080:8080"
     environment:
       AIS_DATA_DIR: /data
       AIS_CREDENTIALS_FILE: /run/secrets/barentswatch.ini
