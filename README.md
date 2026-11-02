@@ -13,10 +13,9 @@ date in **Settings**. Draw/import a rectangle on **Map**, save and activate it,
 then click **Start recording**. Choose whether to include the last 14 days
 of available history for the active area or keep its current start/progress.
 The history request leaves a five-minute margin within the rolling API window.
-Existing local credentials are prefilled.
-
-New checkout: copy `scripts/common/credentials.example.ini` to
-`scripts/common/credentials.ini` before starting.
+Enter BarentsWatch credentials in **Settings** and use **Test credentials** to
+check them before saving. Credentials persist in the `ais-data` volume;
+the website does not import credentials from files or environment variables.
 
 ## Features
 

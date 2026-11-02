@@ -12,11 +12,12 @@ from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
+import requests
 from flask import Flask, Response, jsonify, render_template, request, send_file, stream_with_context
 from shapely.geometry import box, mapping, shape
 
 from scripts.common.detection import FIELDS, IncidentSettings, explain_incident
-from scripts.common.tracks import Config, build_tracks, render_map
+from scripts.common.tracks import TOKEN_URL, Config, build_tracks, render_map
 from .exports import geojson_stream
 from .script_export import script_download
 from .storage import OSLO, Store, colour, day_bounds, describe_boat, now, parse, stamp
@@ -167,6 +168,29 @@ def create_app(store=None):
                 credentials["client_secret"] = str(values["client_secret"]).strip()
             store.save_credentials(credentials)
         return jsonify(ok=True)
+
+    @app.post("/api/credentials/test")
+    def test_credentials():
+        """Check entered credentials without saving them or exposing the token."""
+        values = request.get_json()
+        client_id = str(values.get("client_id", "")).strip()
+        secret = str(values.get("client_secret", "")).strip() or store.credentials()["client_secret"]
+        if not client_id or not secret:
+            raise ValueError("Enter a client ID and client secret first.")
+        try:
+            response = requests.post(TOKEN_URL, data={
+                "client_id": client_id, "client_secret": secret,
+                "scope": "ais", "grant_type": "client_credentials",
+            }, timeout=15)
+            if response.status_code in (400, 401, 403):
+                return jsonify(error="BarentsWatch rejected these credentials. Check the ID, secret and AIS access."), 400
+            response.raise_for_status()
+            token = response.json()
+        except (requests.RequestException, ValueError):
+            return jsonify(error="Could not verify credentials with BarentsWatch. Try again shortly."), 502
+        if not isinstance(token, dict) or not token.get("access_token"):
+            return jsonify(error="BarentsWatch did not return an access token."), 502
+        return jsonify(message="Credentials accepted for AIS access. Save Settings to keep any changes.")
 
     @app.post("/api/boats")
     def save_boats():

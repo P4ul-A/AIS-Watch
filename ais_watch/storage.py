@@ -160,7 +160,7 @@ class Store:
                 for key, value in settings.items():
                     self.put(db, key, value)
             db.execute("PRAGMA user_version=2")
-        self.import_credentials()
+        self.initialize_credentials()
 
     @staticmethod
     def put(db, key, value):
@@ -227,15 +227,11 @@ class Store:
         os.chmod(temporary, 0o600)
         temporary.replace(path)
 
-    def import_credentials(self):
-        """Bootstrap from a read-only local mount or environment, once only."""
+    def initialize_credentials(self):
+        """Create empty Settings credentials once, preserving existing values."""
         if (self.directory / "credentials.json").exists():
             return
-        parser = configparser.ConfigParser(interpolation=None)
-        parser.read(os.environ.get("AIS_CREDENTIALS_FILE", str(ROOT / "scripts/common/credentials.ini")))
-        self.save_credentials({key: os.environ.get("BARENTSWATCH_" + key.upper(), "")
-                               or parser.get("barentswatch", key, fallback="").strip()
-                               for key in ("client_id", "client_secret")})
+        self.save_credentials({"client_id": "", "client_secret": ""})
 
     def enqueue(self, kind, payload=None):
         """Deduplicate identical pending requests while allowing different day jobs."""

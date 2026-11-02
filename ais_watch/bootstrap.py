@@ -1,4 +1,4 @@
-"""Import a private host credential file before dropping container privileges."""
+"""Prepare private storage before dropping container privileges."""
 
 import os
 import sys
@@ -7,10 +7,10 @@ from .storage import Store
 
 
 def main():
-    """Read owner-only bind mounts as root; run the actual service as UID 1000."""
+    """Prepare storage as root; run the actual service as UID 1000."""
     store = Store()
     store.directory.mkdir(parents=True, exist_ok=True)
-    store.import_credentials()
+    store.initialize_credentials()
     if os.geteuid() == 0:
         os.chown(store.directory, 1000, 1000)
         os.chown(store.directory / "credentials.json", 1000, 1000)

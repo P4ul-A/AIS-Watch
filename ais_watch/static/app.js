@@ -266,6 +266,24 @@ $('#settings-form').onsubmit = safely(async event => {
     }
     await api('/api/settings', values); await refresh(true); notice('Settings saved.'); loadReplay();
 });
+$('#test-credentials').onclick = async () => {
+    const button = $('#test-credentials');
+    const result = $('#credential-test-result');
+    const form = $('#settings-form');
+    button.disabled = true;
+    result.textContent = 'Checking…';
+    try {
+        const response = await api('/api/credentials/test', {
+            client_id: form.elements.client_id.value,
+            client_secret: form.elements.client_secret.value
+        });
+        result.textContent = response.message;
+    } catch (error) {
+        result.textContent = error.message;
+    } finally {
+        button.disabled = false;
+    }
+};
 $('#boat-search').oninput = renderBoats;
 $('#add-boat').onclick = safely(async () => { await updateBoat([$('#new-mmsi').value.trim()], {name: $('#new-name').value}); $('#new-mmsi').value = ''; $('#new-name').value = ''; });
 $('#category-add').onsubmit = safely(async event => { event.preventDefault(); await api('/api/categories', {name: event.target.elements.name.value, color: event.target.elements.color.value, sort_order: state.categories.length}); await refresh(true); event.target.reset(); });
